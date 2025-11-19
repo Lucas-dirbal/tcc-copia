@@ -1,400 +1,370 @@
 // ===== SISTEMA DE GESTÃO DE EQUIPAMENTOS =====
 
-// Base de dados de equipamentos
-let equipamentos = JSON.parse(localStorage.getItem('equipamentos')) || [
-    {
-        id: 1,
-        nome: 'Notebook Dell Inspiron',
-        categoria: 'Informática',
-        numeroSerie: 'DELL2024001',
-        status: 'disponivel',
-        localizacao: 'Laboratório 01',
-        descricao: 'Notebook Dell i5, 8GB RAM, 256GB SSD',
-        dataAquisicao: '2024-01-15',
-        valor: 2500.00
-    },
-    {
-        id: 2,
-        nome: 'Projetor Epson',
-        categoria: 'Áudio/Vídeo',
-        numeroSerie: 'EPS2024002',
-        status: 'disponivel', 
-        localizacao: 'Sala de Reuniões',
-        descricao: 'Projetor Epson XGA, 3000 lumens',
-        dataAquisicao: '2024-01-20',
-        valor: 1800.00
-    },
-    {
-        id: 3,
-        nome: 'Microscópio Biológico',
-        categoria: 'Laboratório',
-        numeroSerie: 'MIC2024003',
-        status: 'manutencao',
-        localizacao: 'Laboratório de Ciências',
-        descricao: 'Microscópio biológico profissional',
-        dataAquisicao: '2024-02-01',
-        valor: 3200.00
+const EquipmentManager = {
+  currentUser: null,
+  equipments: [],
+
+  // Inicializar o sistema
+  async init() {
+    await this.checkAuth();
+    if (!this.currentUser) {
+      window.location.href = '/login';
+      return;
     }
-];
+    
+    this.setupEventListeners();
+    await this.loadEquipments();
+  },
 
-// Inicializar sistema de equipamentos
-document.addEventListener('DOMContentLoaded', function() {
-    if (window.location.pathname.includes('sistema.html')) {
-        initEquipmentSystem();
+  // Verificar autenticação
+  async checkAuth() {
+    try {
+      const response = await fetch('/api/user');
+      const data = await response.json();
+      if (data.success) {
+        this.currentUser = data.user;
+      }
+    } catch (err) {
+      console.error('Erro ao verificar autenticação:', err);
     }
-});
+  },
 
-function initEquipmentSystem() {
-    // Verificar permissões
-    if (!AuthSystem.protectRoute('aluno')) return;
-    
-    loadEquipamentosTable();
-    setupEquipmentEvents();
-    updateDashboardStats();
-}
+  // Carregar equipamentos do servidor
+  async loadEquipments() {
+    try {
+      const response = await fetch('/api/equipments');
+      const data = await response.json();
+      
+      if (data.success) {
+        this.equipments = data.equipments;
+        this.renderEquipments();
+      } else {
+        this.showMessage('Erro ao carregar equipamentos', 'error');
+      }
+    } catch (err) {
+      console.error('Erro ao carregar equipamentos:', err);
+      this.showMessage('Erro ao carregar equipamentos', 'error');
+    }
+  },
 
-// Carregar tabela de equipamentos
-function loadEquipamentosTable() {
-    const tbody = document.getElementById('equipamentosTable');
-    if (!tbody) return;
-    
-    const currentUser = AuthSystem.getCurrentUser();
-    const searchTerm = document.getElementById('searchEquipamentos')?.value.toLowerCase() || '';
-    
-    const equipamentosFiltrados = equipamentos.filter(equip => 
-        equip.nome.toLowerCase().includes(searchTerm) ||
-        equip.categoria.toLowerCase().includes(searchTerm) ||
-        equip.numeroSerie.toLowerCase().includes(searchTerm)
+  // Renderizar lista de equipamentos
+  renderEquipments() {
+    const container = document.getElementById('equipmentList');
+    if (!container) return;
+
+    if (this.equipments.length === 0) {
+      container.innerHTML = `
+        <div class="empty-state">
+          <p>Nenhum equipamento cadastrado</p>
+          ${this.currentUser.role !== 'aluno' ? '<p>Clique em "Adicionar Equipamento" para criar um novo registro</p>' : ''}
+        </div>
+      `;
+      return;
+    }
+
+    let html = `
+      <table class="equip-table">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Nome</th>
+            <th>Série</th>
+            <th>Localização</th>
+            <th>Status</th>
+            <th>Ações</th>
+          </tr>
+        </thead>
+        <tbody>
+    `;
+
+    this.equipments.forEach(equipment => {
+      const statusClass = this.getStatusClass(equipment.status);
+      let actions = '';
+
+      if (this.currentUser.role === 'aluno') {
+        if (equipment.status === 'Disponível') {
+          actions = `<button class="btn-small btn-borrow" onclick="EquipmentManager.openBorrowModal(${equipment.id})">Emprestar</button>`;
+        }
+      } else if (this.currentUser.role === 'pedagogico' || this.currentUser.role === 'admin') {
+        actions = `
+          <button class="btn-small btn-edit" onclick="EquipmentManager.openEditModal(${equipment.id})">Editar</button>
+        `;
+        if (this.currentUser.role === 'admin') {
+          actions += `<button class="btn-small btn-delete" onclick="EquipmentManager.deleteEquipment(${equipment.id})">Deletar</button>`;
+        }
+      }
+
+      html += `
+        <tr>
+          <td>${equipment.id}</td>
+          <td>${equipment.name}</td>
+          <td>${equipment.serial_number || '-'}</td>
+          <td>${equipment.location}</td>
+          <td><span class="status-badge ${statusClass}">${equipment.status}</span></td>
+          <td><div class="action-buttons">${actions}</div></td>
+        </tr>
+      `;
+    });
+
+    html += `
+        </tbody>
+      </table>
+    `;
+
+    container.innerHTML = html;
+  },
+
+  // Obter classe CSS do status
+  getStatusClass(status) {
+    switch(status) {
+      case 'Disponível': return 'status-disponivel';
+      case 'Emprestado': return 'status-emprestado';
+      case 'Manutenção': return 'status-manutencao';
+      default: return 'status-disponivel';
+    }
+  },
+
+  // Configurar event listeners
+  setupEventListeners() {
+    // Botão adicionar
+    const btnAdd = document.getElementById('btnAdd');
+    if (btnAdd) {
+      if (this.currentUser.role === 'aluno') {
+        btnAdd.style.display = 'none';
+      } else {
+        btnAdd.addEventListener('click', () => this.openAddModal());
+      }
+    }
+
+    // Busca
+    const searchInput = document.getElementById('searchInput');
+    if (searchInput) {
+      searchInput.addEventListener('input', (e) => this.filterEquipments(e.target.value));
+    }
+
+    // Modais
+    const closeEquipmentModal = document.getElementById('closeEquipmentModal');
+    if (closeEquipmentModal) {
+      closeEquipmentModal.addEventListener('click', () => this.closeModal('equipmentModal'));
+    }
+
+    const closeBorrowModal = document.getElementById('closeBorrowModal');
+    if (closeBorrowModal) {
+      closeBorrowModal.addEventListener('click', () => this.closeModal('borrowModal'));
+    }
+
+    // Formulários
+    const equipmentForm = document.getElementById('equipmentForm');
+    if (equipmentForm) {
+      equipmentForm.addEventListener('submit', (e) => this.handleEquipmentSubmit(e));
+    }
+
+    const borrowForm = document.getElementById('borrowForm');
+    if (borrowForm) {
+      borrowForm.addEventListener('submit', (e) => this.handleBorrowSubmit(e));
+    }
+
+    // Logout
+    const logoutBtn = document.getElementById('logoutBtn');
+    if (logoutBtn) {
+      logoutBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        this.logout();
+      });
+    }
+
+    // Fechar modal ao clicar fora
+    window.addEventListener('click', (e) => {
+      const equipmentModal = document.getElementById('equipmentModal');
+      const borrowModal = document.getElementById('borrowModal');
+      
+      if (e.target === equipmentModal) this.closeModal('equipmentModal');
+      if (e.target === borrowModal) this.closeModal('borrowModal');
+    });
+  },
+
+  // Filtrar equipamentos
+  filterEquipments(searchTerm) {
+    const filtered = this.equipments.filter(eq => 
+      eq.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (eq.serial_number && eq.serial_number.toLowerCase().includes(searchTerm.toLowerCase()))
     );
     
-    tbody.innerHTML = '';
-    
-    equipamentosFiltrados.forEach(equipamento => {
-        const tr = document.createElement('tr');
-        
-        // Definir ações baseado na role do usuário
-        let acoes = '';
-        if (currentUser.role === 'aluno') {
-            acoes = `
-                <button class="btn-action btn-view" onclick="verEquipamento(${equipamento.id})" 
-                        ${equipamento.status !== 'disponivel' ? 'disabled' : ''}>
-                    👁️ Ver
-                </button>
-            `;
-        } else if (currentUser.role === 'professor') {
-            acoes = `
-                <button class="btn-action btn-view" onclick="verEquipamento(${equipamento.id})">
-                    👁️ Ver
-                </button>
-                <button class="btn-action btn-edit" onclick="editarEquipamento(${equipamento.id})">
-                    ✏️ Editar
-                </button>
-            `;
-        } else if (currentUser.role === 'admin') {
-            acoes = `
-                <button class="btn-action btn-view" onclick="verEquipamento(${equipamento.id})">
-                    👁️ Ver
-                </button>
-                <button class="btn-action btn-edit" onclick="editarEquipamento(${equipamento.id})">
-                    ✏️ Editar
-                </button>
-                <button class="btn-action btn-delete" onclick="excluirEquipamento(${equipamento.id})">
-                    🗑️ Excluir
-                </button>
-            `;
-        }
-        
-        tr.innerHTML = `
-            <td>${equipamento.id}</td>
-            <td>${equipamento.nome}</td>
-            <td>${equipamento.categoria}</td>
-            <td>${equipamento.numeroSerie}</td>
-            <td><span class="status-badge status-${equipamento.status}">${getStatusText(equipamento.status)}</span></td>
-            <td>${equipamento.localizacao}</td>
-            <td>${acoes}</td>
-        `;
-        
-        tbody.appendChild(tr);
-    });
-}
+    const container = document.getElementById('equipmentList');
+    if (!container) return;
 
-// Configurar eventos dos equipamentos
-function setupEquipmentEvents() {
-    const btnNovoEquipamento = document.getElementById('btnNovoEquipamento');
-    const searchInput = document.getElementById('searchEquipamentos');
-    
-    if (btnNovoEquipamento) {
-        // Mostrar/ocultar botão baseado na role
-        const currentUser = AuthSystem.getCurrentUser();
-        if (currentUser.role === 'aluno') {
-            btnNovoEquipamento.style.display = 'none';
-        } else {
-            btnNovoEquipamento.addEventListener('click', mostrarModalNovoEquipamento);
-        }
+    if (filtered.length === 0) {
+      container.innerHTML = '<div class="empty-state"><p>Nenhum equipamento encontrado</p></div>';
+      return;
     }
-    
-    if (searchInput) {
-        searchInput.addEventListener('input', loadEquipamentosTable);
+
+    // Renderizar apenas os filtrados
+    const tempEquipments = this.equipments;
+    this.equipments = filtered;
+    this.renderEquipments();
+    this.equipments = tempEquipments;
+  },
+
+  // Abrir modal de adicionar
+  openAddModal() {
+    const modal = document.getElementById('equipmentModal');
+    document.getElementById('modalTitle').textContent = 'Novo Equipamento';
+    document.getElementById('equipmentId').value = '';
+    document.getElementById('equipmentForm').reset();
+    modal.style.display = 'block';
+  },
+
+  // Abrir modal de editar
+  openEditModal(id) {
+    const equipment = this.equipments.find(e => e.id === id);
+    if (!equipment) return;
+
+    const modal = document.getElementById('equipmentModal');
+    document.getElementById('modalTitle').textContent = 'Editar Equipamento';
+    document.getElementById('equipmentId').value = equipment.id;
+    document.getElementById('equipmentName').value = equipment.name;
+    document.getElementById('equipmentSerial').value = equipment.serial_number || '';
+    document.getElementById('equipmentDescription').value = equipment.description || '';
+    document.getElementById('equipmentLocation').value = equipment.location;
+    document.getElementById('equipmentStatus').value = equipment.status;
+    modal.style.display = 'block';
+  },
+
+  // Abrir modal de empréstimo
+  openBorrowModal(id) {
+    const equipment = this.equipments.find(e => e.id === id);
+    if (!equipment) return;
+
+    document.getElementById('borrowEquipmentId').value = equipment.id;
+    document.getElementById('borrowEquipmentName').textContent = `Equipamento: ${equipment.name}`;
+    document.getElementById('borrowModal').style.display = 'block';
+  },
+
+  // Fechar modal
+  closeModal(modalId) {
+    document.getElementById(modalId).style.display = 'none';
+  },
+
+  // Lidar com envio do formulário de equipamento
+  async handleEquipmentSubmit(e) {
+    e.preventDefault();
+
+    const id = document.getElementById('equipmentId').value;
+    const name = document.getElementById('equipmentName').value;
+    const serial_number = document.getElementById('equipmentSerial').value;
+    const description = document.getElementById('equipmentDescription').value;
+    const location = document.getElementById('equipmentLocation').value;
+    const status = document.getElementById('equipmentStatus').value;
+
+    const data = { name, description, location, status };
+    if (serial_number) data.serial_number = serial_number;
+
+    try {
+      let response;
+      if (id) {
+        // Editar
+        response = await fetch(`/api/equipments/${id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data)
+        });
+      } else {
+        // Criar
+        response = await fetch('/api/equipments', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data)
+        });
+      }
+
+      const result = await response.json();
+      if (result.success) {
+        this.showMessage(result.message, 'success');
+        this.closeModal('equipmentModal');
+        await this.loadEquipments();
+      } else {
+        this.showMessage(result.message, 'error');
+      }
+    } catch (err) {
+      console.error('Erro:', err);
+      this.showMessage('Erro ao salvar equipamento', 'error');
     }
-}
+  },
 
-// Texto do status
-function getStatusText(status) {
-    const statusMap = {
-        'disponivel': 'Disponível',
-        'emprestado': 'Emprestado', 
-        'manutencao': 'Manutenção',
-        'indisponivel': 'Indisponível'
-    };
-    return statusMap[status] || status;
-}
+  // Lidar com envio do formulário de empréstimo
+  async handleBorrowSubmit(e) {
+    e.preventDefault();
 
-// Modal de novo equipamento
-function mostrarModalNovoEquipamento() {
-    if (!AuthSystem.hasPermission('professor')) {
-        showNotification('Acesso não autorizado!', 'error');
-        return;
+    const equipmentId = document.getElementById('borrowEquipmentId').value;
+
+    try {
+      const response = await fetch('/api/loans', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ equipment_id: parseInt(equipmentId) })
+      });
+
+      const result = await response.json();
+      if (result.success) {
+        this.showMessage('Empréstimo solicitado com sucesso!', 'success');
+        this.closeModal('borrowModal');
+        await this.loadEquipments();
+      } else {
+        this.showMessage(result.message, 'error');
+      }
+    } catch (err) {
+      console.error('Erro:', err);
+      this.showMessage('Erro ao solicitar empréstimo', 'error');
     }
-    
-    const modalHTML = `
-        <div class="modal-overlay" id="modalEquipamento">
-            <div class="modal">
-                <div class="modal-header">
-                    <h3>➕ Novo Equipamento</h3>
-                    <button class="modal-close" onclick="fecharModal()">×</button>
-                </div>
-                <div class="modal-body">
-                    <form id="formEquipamento">
-                        <div class="form-group">
-                            <label for="equipamentoNome">Nome do Equipamento:</label>
-                            <input type="text" id="equipamentoNome" required>
-                        </div>
-                        
-                        <div class="form-group">
-                            <label for="equipamentoCategoria">Categoria:</label>
-                            <select id="equipamentoCategoria" required>
-                                <option value="">Selecione...</option>
-                                <option value="Informática">Informática</option>
-                                <option value="Áudio/Vídeo">Áudio/Vídeo</option>
-                                <option value="Laboratório">Laboratório</option>
-                                <option value="Escritório">Escritório</option>
-                                <option value="Outros">Outros</option>
-                            </select>
-                        </div>
-                        
-                        <div class="form-group">
-                            <label for="equipamentoNumeroSerie">Número de Série:</label>
-                            <input type="text" id="equipamentoNumeroSerie" required>
-                        </div>
-                        
-                        <div class="form-group">
-                            <label for="equipamentoLocalizacao">Localização:</label>
-                            <input type="text" id="equipamentoLocalizacao" required>
-                        </div>
-                        
-                        <div class="form-group">
-                            <label for="equipamentoDescricao">Descrição:</label>
-                            <textarea id="equipamentoDescricao" rows="3"></textarea>
-                        </div>
-                        
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label for="equipamentoValor">Valor (R$):</label>
-                                <input type="number" id="equipamentoValor" step="0.01">
-                            </div>
-                            
-                            <div class="form-group">
-                                <label for="equipamentoStatus">Status:</label>
-                                <select id="equipamentoStatus">
-                                    <option value="disponivel">Disponível</option>
-                                    <option value="indisponivel">Indisponível</option>
-                                    <option value="manutencao">Manutenção</option>
-                                </select>
-                            </div>
-                        </div>
-                    </form>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" onclick="fecharModal()">Cancelar</button>
-                    <button type="button" class="btn btn-primary" onclick="salvarEquipamento()">Salvar Equipamento</button>
-                </div>
-            </div>
-        </div>
-    `;
-    
-    document.body.insertAdjacentHTML('beforeend', modalHTML);
-    
-    // Fechar modal ao clicar fora
-    document.getElementById('modalEquipamento').addEventListener('click', function(e) {
-        if (e.target === this) fecharModal();
-    });
-}
+  },
 
-// Salvar equipamento
-function salvarEquipamento() {
-    const form = document.getElementById('formEquipamento');
-    if (!form.checkValidity()) {
-        showNotification('Preencha todos os campos obrigatórios!', 'error');
-        return;
+  // Deletar equipamento
+  async deleteEquipment(id) {
+    if (!confirm('Tem certeza que deseja deletar este equipamento?')) return;
+
+    try {
+      const response = await fetch(`/api/equipments/${id}`, {
+        method: 'DELETE'
+      });
+
+      const result = await response.json();
+      if (result.success) {
+        this.showMessage('Equipamento deletado com sucesso!', 'success');
+        await this.loadEquipments();
+      } else {
+        this.showMessage(result.message, 'error');
+      }
+    } catch (err) {
+      console.error('Erro:', err);
+      this.showMessage('Erro ao deletar equipamento', 'error');
     }
-    
-    const novoEquipamento = {
-        id: Math.max(...equipamentos.map(e => e.id), 0) + 1,
-        nome: document.getElementById('equipamentoNome').value,
-        categoria: document.getElementById('equipamentoCategoria').value,
-        numeroSerie: document.getElementById('equipamentoNumeroSerie').value,
-        localizacao: document.getElementById('equipamentoLocalizacao').value,
-        descricao: document.getElementById('equipamentoDescricao').value,
-        valor: parseFloat(document.getElementById('equipamentoValor').value) || 0,
-        status: document.getElementById('equipamentoStatus').value,
-        dataAquisicao: new Date().toISOString().split('T')[0]
-    };
-    
-    equipamentos.push(novoEquipamento);
-    salvarEquipamentosNoStorage();
-    
-    showNotification('Equipamento cadastrado com sucesso!', 'success');
-    fecharModal();
-    loadEquipamentosTable();
-    updateDashboardStats();
-}
+  },
 
-// Ver equipamento
-function verEquipamento(id) {
-    const equipamento = equipamentos.find(e => e.id === id);
-    if (!equipamento) return;
-    
-    const modalHTML = `
-        <div class="modal-overlay" id="modalVerEquipamento">
-            <div class="modal">
-                <div class="modal-header">
-                    <h3>👁️ Detalhes do Equipamento</h3>
-                    <button class="modal-close" onclick="fecharModal()">×</button>
-                </div>
-                <div class="modal-body">
-                    <div class="equipamento-detalhes">
-                        <div class="detalhe-item">
-                            <strong>Nome:</strong> ${equipamento.nome}
-                        </div>
-                        <div class="detalhe-item">
-                            <strong>Categoria:</strong> ${equipamento.categoria}
-                        </div>
-                        <div class="detalhe-item">
-                            <strong>Nº Série:</strong> ${equipamento.numeroSerie}
-                        </div>
-                        <div class="detalhe-item">
-                            <strong>Status:</strong> <span class="status-badge status-${equipamento.status}">${getStatusText(equipamento.status)}</span>
-                        </div>
-                        <div class="detalhe-item">
-                            <strong>Localização:</strong> ${equipamento.localizacao}
-                        </div>
-                        <div class="detalhe-item">
-                            <strong>Descrição:</strong> ${equipamento.descricao || 'Nenhuma descrição'}
-                        </div>
-                        <div class="detalhe-item">
-                            <strong>Valor:</strong> R$ ${equipamento.valor.toFixed(2)}
-                        </div>
-                        <div class="detalhe-item">
-                            <strong>Data de Aquisição:</strong> ${new Date(equipamento.dataAquisicao).toLocaleDateString('pt-BR')}
-                        </div>
-                    </div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-primary" onclick="fecharModal()">Fechar</button>
-                    ${AuthSystem.hasPermission('professor') && equipamento.status === 'disponivel' ? 
-                        `<button type="button" class="btn btn-success" onclick="solicitarEmprestimo(${equipamento.id})">📅 Solicitar Empréstimo</button>` : ''}
-                </div>
-            </div>
-        </div>
-    `;
-    
-    document.body.insertAdjacentHTML('beforeend', modalHTML);
-}
-
-// Editar equipamento
-function editarEquipamento(id) {
-    if (!AuthSystem.hasPermission('professor')) {
-        showNotification('Acesso não autorizado!', 'error');
-        return;
+  // Fazer logout
+  async logout() {
+    try {
+      await fetch('/api/logout', { method: 'POST' });
+      window.location.href = '/login';
+    } catch (err) {
+      console.error('Erro ao fazer logout:', err);
     }
-    
-    // Implementar edição similar ao cadastro
-    showNotification('Funcionalidade de edição em desenvolvimento!', 'info');
-}
+  },
 
-// Excluir equipamento
-function excluirEquipamento(id) {
-    if (!AuthSystem.hasPermission('admin')) {
-        showNotification('Acesso não autorizado!', 'error');
-        return;
-    }
-    
-    if (confirm('Tem certeza que deseja excluir este equipamento?')) {
-        equipamentos = equipamentos.filter(e => e.id !== id);
-        salvarEquipamentosNoStorage();
-        showNotification('Equipamento excluído com sucesso!', 'success');
-        loadEquipamentosTable();
-        updateDashboardStats();
-    }
-}
+  // Mostrar mensagem
+  showMessage(text, type) {
+    const messageBox = document.getElementById('messageBox');
+    if (!messageBox) return;
 
-// Salvar no localStorage
-function salvarEquipamentosNoStorage() {
-    localStorage.setItem('equipamentos', JSON.stringify(equipamentos));
-}
+    messageBox.textContent = text;
+    messageBox.className = `message ${type}`;
+    
+    setTimeout(() => {
+      messageBox.className = 'message';
+    }, 5000);
+  }
+};
 
-// Atualizar estatísticas do dashboard
-function updateDashboardStats() {
-    const totalEquipamentos = document.getElementById('totalEquipamentos');
-    const totalEmprestimos = document.getElementById('totalEmprestimos');
-    const equipamentosDisponiveis = document.getElementById('equipamentosDisponiveis');
-    const equipamentosManutencao = document.getElementById('equipamentosManutencao');
-    
-    if (totalEquipamentos) {
-        totalEquipamentos.textContent = equipamentos.length;
-    }
-    
-    if (equipamentosDisponiveis) {
-        const disponiveis = equipamentos.filter(e => e.status === 'disponivel').length;
-        equipamentosDisponiveis.textContent = disponiveis;
-    }
-    
-    if (equipamentosManutencao) {
-        const manutencao = equipamentos.filter(e => e.status === 'manutencao').length;
-        equipamentosManutencao.textContent = manutencao;
-    }
-    
-    // Empréstimos serão atualizados pelo loanSystem.js
-}
-
-// Fechar modal
-function fecharModal() {
-    const modals = document.querySelectorAll('.modal-overlay');
-    modals.forEach(modal => modal.remove());
-}
-
-// Solicitar empréstimo
-function solicitarEmprestimo(equipamentoId) {
-    if (!AuthSystem.hasPermission('professor')) {
-        showNotification('Apenas professores podem solicitar empréstimos!', 'error');
-        return;
-    }
-    
-    fecharModal();
-    
-    // Redirecionar para seção de empréstimos
-    const menuItem = document.querySelector('[data-section="emprestimos"]');
-    if (menuItem) menuItem.click();
-    
-    showNotification('Redirecionando para empréstimos...', 'info');
-}
-
-// Exportar funções para uso global
-window.equipamentos = equipamentos;
-window.loadEquipamentosTable = loadEquipamentosTable;
-window.mostrarModalNovoEquipamento = mostrarModalNovoEquipamento;
-window.verEquipamento = verEquipamento;
-window.editarEquipamento = editarEquipamento;
-window.excluirEquipamento = excluirEquipamento;
-window.solicitarEmprestimo = solicitarEmprestimo;
-window.fecharModal = fecharModal;
+// Inicializar quando o DOM estiver pronto
+document.addEventListener('DOMContentLoaded', () => {
+  EquipmentManager.init();
+});

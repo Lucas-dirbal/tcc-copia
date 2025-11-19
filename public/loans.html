@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Empréstimos e Devoluções</title>
+  <link rel="stylesheet" href="/css/style.css">
+  <link rel="stylesheet" href="/css/responsive.css">
+  <link rel="stylesheet" href="/css/system.css">
+  <link rel="icon" href="/imagens/logo.png">
+  <style>
+    .loans-section {
+      padding: 20px;
+    }
+
+    .header-section {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 30px;
+    }
+
+    .header-section h1 {
+      margin: 0;
+      color: #333;
+    }
+
+    .tabs {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 20px;
+      border-bottom: 2px solid #ddd;
+    }
+
+    .tab-button {
+      padding: 10px 20px;
+      border: none;
+      background: none;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 600;
+      color: #666;
+      border-bottom: 3px solid transparent;
+      transition: all 0.3s;
+    }
+
+    .tab-button.active {
+      color: #4CAF50;
+      border-bottom-color: #4CAF50;
+    }
+
+    .tab-button:hover {
+      color: #4CAF50;
+    }
+
+    .loans-table {
+      width: 100%;
+      border-collapse: collapse;
+      background: white;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      border-radius: 4px;
+      overflow: hidden;
+    }
+
+    .loans-table thead {
+      background-color: #4CAF50;
+      color: white;
+    }
+
+    .loans-table th {
+      padding: 15px;
+      text-align: left;
+      font-weight: 600;
+    }
+
+    .loans-table td {
+      padding: 12px 15px;
+      border-bottom: 1px solid #eee;
+    }
+
+    .loans-table tbody tr:hover {
+      background-color: #f5f5f5;
+    }
+
+    .status-badge {
+      padding: 5px 10px;
+      border-radius: 4px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .status-emprestado {
+      background-color: #fff3cd;
+      color: #856404;
+    }
+
+    .status-devolvido {
+      background-color: #d4edda;
+      color: #155724;
+    }
+
+    .status-atrasado {
+      background-color: #f8d7da;
+      color: #721c24;
+    }
+
+    .action-buttons {
+      display: flex;
+      gap: 8px;
+    }
+
+    .btn-small {
+      padding: 6px 12px;
+      font-size: 12px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: background-color 0.3s;
+    }
+
+    .btn-return {
+      background-color: #4CAF50;
+      color: white;
+    }
+
+    .btn-return:hover {
+      background-color: #45a049;
+    }
+
+    .btn-approve {
+      background-color: #2196F3;
+      color: white;
+    }
+
+    .btn-approve:hover {
+      background-color: #0b7dda;
+    }
+
+    .btn-reject {
+      background-color: #f44336;
+      color: white;
+    }
+
+    .btn-reject:hover {
+      background-color: #da190b;
+    }
+
+    .message {
+      padding: 15px;
+      margin-bottom: 20px;
+      border-radius: 4px;
+      display: none;
+    }
+
+    .message.success {
+      background-color: #d4edda;
+      color: #155724;
+      border: 1px solid #c3e6cb;
+      display: block;
+    }
+
+    .message.error {
+      background-color: #f8d7da;
+      color: #721c24;
+      border: 1px solid #f5c6cb;
+      display: block;
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 40px;
+      color: #999;
+    }
+
+    .empty-state p {
+      font-size: 16px;
+      margin: 10px 0;
+    }
+  </style>
+</head>
+
+<body>
+  <header>
+    <nav class="navbar">
+      <div class="logo">
+        <img src="/imagens/logo.png" alt="Logo" height="40">
+        <span>Sistema de Gestão</span>
+      </div>
+      <ul class="nav-links">
+        <li><a href="/">Início</a></li>
+        <li><a href="/equipamentos">Equipamentos</a></li>
+        <li><a href="/loans" class="active">Empréstimos</a></li>
+        <li><a href="/sobre">Sobre</a></li>
+        <li><a href="#" id="logoutBtn" class="logout-btn">Sair</a></li>
+      </ul>
+    </nav>
+  </header>
+
+  <main class="container">
+    <section class="loans-section">
+      <div id="messageBox" class="message"></div>
+
+      <div class="header-section">
+        <h1>Empréstimos e Devoluções</h1>
+      </div>
+
+      <div class="tabs" id="tabsContainer">
+        <button class="tab-button active" data-tab="meus-emprestimos">Meus Empréstimos</button>
+        <button class="tab-button" data-tab="solicitacoes" style="display:none;">Solicitações</button>
+        <button class="tab-button" data-tab="historico" style="display:none;">Histórico</button>
+      </div>
+
+      <div id="meusEmprestimos" class="tab-content"></div>
+      <div id="solicitacoes" class="tab-content" style="display:none;"></div>
+      <div id="historico" class="tab-content" style="display:none;"></div>
+    </section>
+  </main>
+
+  <script src="/js/loanSystem.js"></script>
+</body>
+</html>

@@ -1,360 +1,382 @@
-// ===== SISTEMA DE CONTROLE DE EMPRÉSTIMOS =====
+// ===== SISTEMA DE EMPRÉSTIMOS =====
 
-// Base de dados de empréstimos
-let emprestimos = JSON.parse(localStorage.getItem('emprestimos')) || [
-    {
-        id: 1,
-        equipamentoId: 1,
-        equipamentoNome: 'Notebook Dell Inspiron',
-        usuario: 'Professor Silva',
-        usuarioId: 'professor',
-        dataEmprestimo: '2024-01-20',
-        dataDevolucao: '2024-01-25',
-        dataDevolvido: null,
-        status: 'concluido',
-        observacoes: 'Empréstimo para aula de programação'
-    },
-    {
-        id: 2,
-        equipamentoId: 2,
-        equipamentoNome: 'Projetor Epson',
-        usuario: 'João Aluno',
-        usuarioId: 'aluno',
-        dataEmprestimo: '2024-01-22',
-        dataDevolucao: '2024-01-24',
-        dataDevolvido: null,
-        status: 'ativo',
-        observacoes: 'Apresentação de trabalho'
-    }
-];
+const LoanSystem = {
+  currentUser: null,
+  loans: [],
+  currentTab: 'meus-emprestimos',
 
-// Inicializar sistema de empréstimos
-document.addEventListener('DOMContentLoaded', function() {
-    if (window.location.pathname.includes('sistema.html')) {
-        initLoanSystem();
-    }
-});
-
-function initLoanSystem() {
-    // Verificar permissões
-    if (!AuthSystem.protectRoute('aluno')) return;
-    
-    loadEmprestimosTable();
-    setupLoanEvents();
-    updateDashboardStats();
-}
-
-// Carregar tabela de empréstimos
-function loadEmprestimosTable() {
-    const tbody = document.getElementById('emprestimosTable');
-    if (!tbody) return;
-    
-    const currentUser = AuthSystem.getCurrentUser();
-    const filterStatus = document.getElementById('filterStatus')?.value || '';
-    
-    let emprestimosFiltrados = emprestimos;
-    
-    // Filtrar por status se selecionado
-    if (filterStatus) {
-        emprestimosFiltrados = emprestimos.filter(emp => emp.status === filterStatus);
+  // Inicializar o sistema
+  async init() {
+    await this.checkAuth();
+    if (!this.currentUser) {
+      window.location.href = '/login';
+      return;
     }
     
-    // Filtrar por usuário se não for admin
-    if (currentUser.role !== 'admin') {
-        emprestimosFiltrados = emprestimosFiltrados.filter(emp => 
-            emp.usuarioId === currentUser.username
-        );
+    this.setupEventListeners();
+    this.setupTabs();
+    await this.loadLoans();
+  },
+
+  // Verificar autenticação
+  async checkAuth() {
+    try {
+      const response = await fetch('/api/user');
+      const data = await response.json();
+      if (data.success) {
+        this.currentUser = data.user;
+      }
+    } catch (err) {
+      console.error('Erro ao verificar autenticação:', err);
     }
-    
-    tbody.innerHTML = '';
-    
-    emprestimosFiltrados.forEach(emprestimo => {
-        const tr = document.createElement('tr');
-        
-        // Definir ações baseado na role e status
-        let acoes = '';
-        
-        if (currentUser.role === 'admin' || currentUser.role === 'professor') {
-            if (emprestimo.status === 'ativo') {
-                acoes = `
-                    <button class="btn-action btn-success" onclick="registrarDevolucao(${emprestimo.id})">
-                        ✅ Devolver
-                    </button>
-                    <button class="btn-action btn-warning" onclick="editarEmprestimo(${emprestimo.id})">
-                        ✏️ Editar
-                    </button>
-                `;
-            } else if (emprestimo.status === 'pendente') {
-                acoes = `
-                    <button class="btn-action btn-success" onclick="aprovarEmprestimo(${emprestimo.id})">
-                        👍 Aprovar
-                    </button>
-                    <button class="btn-action btn-danger" onclick="rejeitarEmprestimo(${emprestimo.id})">
-                        👎 Rejeitar
-                    </button>
-                `;
-            }
-        }
-        
-        // Alunos só podem ver seus próprios empréstimos
-        if (currentUser.role === 'aluno' && emprestimo.usuarioId === currentUser.username) {
-            if (emprestimo.status === 'ativo') {
-                acoes = `
-                    <button class="btn-action btn-info" onclick="solicitarRenovacao(${emprestimo.id})">
-                        🔄 Renovar
-                    </button>
-                `;
-            }
-        }
-        
-        tr.innerHTML = `
-            <td>${emprestimo.id}</td>
-            <td>${emprestimo.equipamentoNome}</td>
-            <td>${emprestimo.usuario}</td>
-            <td>${formatarData(emprestimo.dataEmprestimo)}</td>
-            <td>${formatarData(emprestimo.dataDevolucao)}</td>
-            <td><span class="status-badge status-${emprestimo.status}">${getStatusEmprestimoText(emprestimo.status)}</span></td>
-            <td>${acoes}</td>
-        `;
-        
-        tbody.appendChild(tr);
+  },
+
+  // Configurar abas
+  setupTabs() {
+    const tabButtons = document.querySelectorAll('.tab-button');
+    const tabsContainer = document.getElementById('tabsContainer');
+
+    // Mostrar abas baseado na role do usuário
+    if (this.currentUser.role === 'pedagogico' || this.currentUser.role === 'admin') {
+      const solicitacoesBtn = tabsContainer.querySelector('[data-tab="solicitacoes"]');
+      const historicoBtn = tabsContainer.querySelector('[data-tab="historico"]');
+      if (solicitacoesBtn) solicitacoesBtn.style.display = 'block';
+      if (historicoBtn) historicoBtn.style.display = 'block';
+    }
+
+    tabButtons.forEach(button => {
+      button.addEventListener('click', (e) => {
+        const tab = e.target.dataset.tab;
+        this.switchTab(tab);
+      });
     });
-}
+  },
 
-// Configurar eventos dos empréstimos
-function setupLoanEvents() {
-    const btnNovoEmprestimo = document.getElementById('btnNovoEmprestimo');
-    const filterStatus = document.getElementById('filterStatus');
-    
-    if (btnNovoEmprestimo) {
-        // Mostrar/ocultar botão baseado na role
-        const currentUser = AuthSystem.getCurrentUser();
-        if (currentUser.role === 'aluno') {
-            btnNovoEmprestimo.style.display = 'none';
-        } else {
-            btnNovoEmprestimo.addEventListener('click', mostrarModalNovoEmprestimo);
-        }
-    }
-    
-    if (filterStatus) {
-        filterStatus.addEventListener('change', loadEmprestimosTable);
-    }
-}
+  // Trocar aba
+  switchTab(tab) {
+    this.currentTab = tab;
 
-// Modal de novo empréstimo
-function mostrarModalNovoEmprestimo() {
-    if (!AuthSystem.hasPermission('professor')) {
-        showNotification('Acesso não autorizado!', 'error');
-        return;
+    // Atualizar botões
+    document.querySelectorAll('.tab-button').forEach(btn => {
+      btn.classList.remove('active');
+    });
+    document.querySelector(`[data-tab="${tab}"]`).classList.add('active');
+
+    // Atualizar conteúdo
+    document.querySelectorAll('.tab-content').forEach(content => {
+      content.style.display = 'none';
+    });
+    document.getElementById(this.getTabContentId(tab)).style.display = 'block';
+
+    // Carregar dados da aba
+    this.loadTabContent(tab);
+  },
+
+  // Obter ID do conteúdo da aba
+  getTabContentId(tab) {
+    const map = {
+      'meus-emprestimos': 'meusEmprestimos',
+      'solicitacoes': 'solicitacoes',
+      'historico': 'historico'
+    };
+    return map[tab] || 'meusEmprestimos';
+  },
+
+  // Carregar dados da aba
+  async loadTabContent(tab) {
+    switch(tab) {
+      case 'meus-emprestimos':
+        this.renderMeusEmprestimos();
+        break;
+      case 'solicitacoes':
+        this.renderSolicitacoes();
+        break;
+      case 'historico':
+        this.renderHistorico();
+        break;
     }
+  },
+
+  // Carregar empréstimos do servidor
+  async loadLoans() {
+    try {
+      const response = await fetch('/api/loans');
+      const data = await response.json();
+      
+      if (data.success) {
+        this.loans = data.loans;
+        this.renderMeusEmprestimos();
+      } else {
+        this.showMessage('Erro ao carregar empréstimos', 'error');
+      }
+    } catch (err) {
+      console.error('Erro ao carregar empréstimos:', err);
+      this.showMessage('Erro ao carregar empréstimos', 'error');
+    }
+  },
+
+  // Renderizar meus empréstimos
+  renderMeusEmprestimos() {
+    const container = document.getElementById('meusEmprestimos');
     
-    const equipamentosDisponiveis = equipamentos.filter(e => e.status === 'disponivel');
-    
-    const modalHTML = `
-        <div class="modal-overlay" id="modalEmprestimo">
-            <div class="modal">
-                <div class="modal-header">
-                    <h3>📅 Novo Empréstimo</h3>
-                    <button class="modal-close" onclick="fecharModal()">×</button>
-                </div>
-                <div class="modal-body">
-                    <form id="formEmprestimo">
-                        <div class="form-group">
-                            <label for="emprestimoEquipamento">Equipamento:</label>
-                            <select id="emprestimoEquipamento" required>
-                                <option value="">Selecione o equipamento...</option>
-                                ${equipamentosDisponiveis.map(equip => 
-                                    `<option value="${equip.id}">${equip.nome} - ${equip.numeroSerie}</option>`
-                                ).join('')}
-                            </select>
-                        </div>
-                        
-                        <div class="form-group">
-                            <label for="emprestimoUsuario">Usuário:</label>
-                            <input type="text" id="emprestimoUsuario" placeholder="Nome do aluno/professor" required>
-                        </div>
-                        
-                        <div class="form-group">
-                            <label for="emprestimoUsuarioId">ID do Usuário:</label>
-                            <input type="text" id="emprestimoUsuarioId" placeholder="ID ou matrícula" required>
-                        </div>
-                        
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label for="emprestimoData">Data do Empréstimo:</label>
-                                <input type="date" id="emprestimoData" value="${new Date().toISOString().split('T')[0]}" required>
-                            </div>
-                            
-                            <div class="form-group">
-                                <label for="emprestimoDevolucao">Data de Devolução:</label>
-                                <input type="date" id="emprestimoDevolucao" required>
-                            </div>
-                        </div>
-                        
-                        <div class="form-group">
-                            <label for="emprestimoObservacoes">Observações:</label>
-                            <textarea id="emprestimoObservacoes" rows="3" placeholder="Finalidade do empréstimo..."></textarea>
-                        </div>
-                    </form>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" onclick="fecharModal()">Cancelar</button>
-                    <button type="button" class="btn btn-primary" onclick="salvarEmprestimo()">Salvar Empréstimo</button>
-                </div>
-            </div>
-        </div>
+    // Filtrar empréstimos do usuário atual
+    const userLoans = this.loans.filter(loan => {
+      if (this.currentUser.role === 'aluno') {
+        return loan.user_id === this.currentUser.id;
+      }
+      return true;
+    });
+
+    if (userLoans.length === 0) {
+      container.innerHTML = '<div class="empty-state"><p>Nenhum empréstimo encontrado</p></div>';
+      return;
+    }
+
+    let html = `
+      <table class="loans-table">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Equipamento</th>
+            <th>Usuário</th>
+            <th>Data Empréstimo</th>
+            <th>Status</th>
+            <th>Ações</th>
+          </tr>
+        </thead>
+        <tbody>
     `;
-    
-    document.body.insertAdjacentHTML('beforeend', modalHTML);
-    
-    // Configurar data de devolução padrão (7 dias)
-    const dataDevolucao = new Date();
-    dataDevolucao.setDate(dataDevolucao.getDate() + 7);
-    document.getElementById('emprestimoDevolucao').value = dataDevolucao.toISOString().split('T')[0];
-    
-    // Fechar modal ao clicar fora
-    document.getElementById('modalEmprestimo').addEventListener('click', function(e) {
-        if (e.target === this) fecharModal();
+
+    userLoans.forEach(loan => {
+      const statusClass = this.getStatusClass(loan.status);
+      let actions = '';
+
+      if (loan.status === 'Emprestado' && this.currentUser.role !== 'aluno') {
+        actions = `<button class="btn-small btn-return" onclick="LoanSystem.returnLoan(${loan.id})">Registrar Devolução</button>`;
+      }
+
+      const loanDate = new Date(loan.loan_date).toLocaleDateString('pt-BR');
+
+      html += `
+        <tr>
+          <td>${loan.id}</td>
+          <td>${loan.equipment_name}</td>
+          <td>${loan.username}</td>
+          <td>${loanDate}</td>
+          <td><span class="status-badge ${statusClass}">${loan.status}</span></td>
+          <td><div class="action-buttons">${actions}</div></td>
+        </tr>
+      `;
     });
-}
 
-// Salvar empréstimo
-function salvarEmprestimo() {
-    const form = document.getElementById('formEmprestimo');
-    if (!form.checkValidity()) {
-        showNotification('Preencha todos os campos obrigatórios!', 'error');
+    html += `
+        </tbody>
+      </table>
+    `;
+
+    container.innerHTML = html;
+  },
+
+  // Renderizar solicitações de empréstimo
+  async renderSolicitacoes() {
+    const container = document.getElementById('solicitacoes');
+
+    try {
+      const response = await fetch('/api/loans');
+      const data = await response.json();
+
+      if (!data.success) {
+        container.innerHTML = '<div class="empty-state"><p>Erro ao carregar solicitações</p></div>';
         return;
-    }
-    
-    const equipamentoId = parseInt(document.getElementById('emprestimoEquipamento').value);
-    const equipamento = equipamentos.find(e => e.id === equipamentoId);
-    
-    if (!equipamento) {
-        showNotification('Equipamento não encontrado!', 'error');
+      }
+
+      // Filtrar apenas empréstimos pendentes
+      const pendingLoans = data.loans.filter(loan => loan.status === 'Emprestado');
+
+      if (pendingLoans.length === 0) {
+        container.innerHTML = '<div class="empty-state"><p>Nenhuma solicitação pendente</p></div>';
         return;
-    }
-    
-    const novoEmprestimo = {
-        id: Math.max(...emprestimos.map(e => e.id), 0) + 1,
-        equipamentoId: equipamentoId,
-        equipamentoNome: equipamento.nome,
-        usuario: document.getElementById('emprestimoUsuario').value,
-        usuarioId: document.getElementById('emprestimoUsuarioId').value,
-        dataEmprestimo: document.getElementById('emprestimoData').value,
-        dataDevolucao: document.getElementById('emprestimoDevolucao').value,
-        dataDevolvido: null,
-        status: 'ativo',
-        observacoes: document.getElementById('emprestimoObservacoes').value
-    };
-    
-    // Atualizar status do equipamento
-    equipamento.status = 'emprestado';
-    
-    emprestimos.push(novoEmprestimo);
-    salvarDadosNoStorage();
-    
-    showNotification('Empréstimo registrado com sucesso!', 'success');
-    fecharModal();
-    loadEmprestimosTable();
-    loadEquipamentosTable();
-    updateDashboardStats();
-}
+      }
 
-// Registrar devolução
-function registrarDevolucao(id) {
-    if (!AuthSystem.hasPermission('professor')) {
-        showNotification('Acesso não autorizado!', 'error');
+      let html = `
+        <table class="loans-table">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Equipamento</th>
+              <th>Usuário</th>
+              <th>Data Solicitação</th>
+              <th>Status</th>
+              <th>Ações</th>
+            </tr>
+          </thead>
+          <tbody>
+      `;
+
+      pendingLoans.forEach(loan => {
+        const loanDate = new Date(loan.loan_date).toLocaleDateString('pt-BR');
+
+        html += `
+          <tr>
+            <td>${loan.id}</td>
+            <td>${loan.equipment_name}</td>
+            <td>${loan.username}</td>
+            <td>${loanDate}</td>
+            <td><span class="status-badge status-emprestado">Emprestado</span></td>
+            <td>
+              <div class="action-buttons">
+                <button class="btn-small btn-return" onclick="LoanSystem.returnLoan(${loan.id})">Registrar Devolução</button>
+              </div>
+            </td>
+          </tr>
+        `;
+      });
+
+      html += `
+          </tbody>
+        </table>
+      `;
+
+      container.innerHTML = html;
+    } catch (err) {
+      console.error('Erro:', err);
+      container.innerHTML = '<div class="empty-state"><p>Erro ao carregar solicitações</p></div>';
+    }
+  },
+
+  // Renderizar histórico de empréstimos
+  async renderHistorico() {
+    const container = document.getElementById('historico');
+
+    try {
+      const response = await fetch('/api/reports/loans-history');
+      const data = await response.json();
+
+      if (!data.success) {
+        container.innerHTML = '<div class="empty-state"><p>Erro ao carregar histórico</p></div>';
         return;
+      }
+
+      if (data.history.length === 0) {
+        container.innerHTML = '<div class="empty-state"><p>Nenhum histórico de empréstimos</p></div>';
+        return;
+      }
+
+      let html = `
+        <table class="loans-table">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Equipamento</th>
+              <th>Usuário</th>
+              <th>Data Empréstimo</th>
+              <th>Data Devolução</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+      `;
+
+      data.history.forEach(loan => {
+        const statusClass = this.getStatusClass(loan.status);
+        const loanDate = new Date(loan.loan_date).toLocaleDateString('pt-BR');
+        const returnDate = loan.return_date ? new Date(loan.return_date).toLocaleDateString('pt-BR') : '-';
+
+        html += `
+          <tr>
+            <td>${loan.id}</td>
+            <td>${loan.equipment_name}</td>
+            <td>${loan.username}</td>
+            <td>${loanDate}</td>
+            <td>${returnDate}</td>
+            <td><span class="status-badge ${statusClass}">${loan.status}</span></td>
+          </tr>
+        `;
+      });
+
+      html += `
+          </tbody>
+        </table>
+      `;
+
+      container.innerHTML = html;
+    } catch (err) {
+      console.error('Erro:', err);
+      container.innerHTML = '<div class="empty-state"><p>Erro ao carregar histórico</p></div>';
     }
-    
-    const emprestimo = emprestimos.find(e => e.id === id);
-    if (!emprestimo) return;
-    
-    const equipamento = equipamentos.find(e => e.id === emprestimo.equipamentoId);
-    if (equipamento) {
-        equipamento.status = 'disponivel';
+  },
+
+  // Obter classe CSS do status
+  getStatusClass(status) {
+    switch(status) {
+      case 'Emprestado': return 'status-emprestado';
+      case 'Devolvido': return 'status-devolvido';
+      case 'Atrasado': return 'status-atrasado';
+      default: return 'status-emprestado';
     }
-    
-    emprestimo.status = 'concluido';
-    emprestimo.dataDevolvido = new Date().toISOString().split('T')[0];
-    
-    salvarDadosNoStorage();
-    showNotification('Devolução registrada com sucesso!', 'success');
-    loadEmprestimosTable();
-    loadEquipamentosTable();
-    updateDashboardStats();
-}
+  },
 
-// Aprovar empréstimo
-function aprovarEmprestimo(id) {
-    const emprestimo = emprestimos.find(e => e.id === id);
-    if (emprestimo) {
-        emprestimo.status = 'ativo';
-        salvarDadosNoStorage();
-        showNotification('Empréstimo aprovado!', 'success');
-        loadEmprestimosTable();
+  // Registrar devolução
+  async returnLoan(id) {
+    if (!confirm('Deseja registrar a devolução deste equipamento?')) return;
+
+    try {
+      const response = await fetch(`/api/loans/${id}/return`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' }
+      });
+
+      const result = await response.json();
+      if (result.success) {
+        this.showMessage('Devolução registrada com sucesso!', 'success');
+        await this.loadLoans();
+        this.loadTabContent(this.currentTab);
+      } else {
+        this.showMessage(result.message, 'error');
+      }
+    } catch (err) {
+      console.error('Erro:', err);
+      this.showMessage('Erro ao registrar devolução', 'error');
     }
-}
+  },
 
-// Texto do status do empréstimo
-function getStatusEmprestimoText(status) {
-    const statusMap = {
-        'pendente': 'Pendente',
-        'ativo': 'Ativo',
-        'concluido': 'Concluído',
-        'atrasado': 'Atrasado',
-        'rejeitado': 'Rejeitado'
-    };
-    return statusMap[status] || status;
-}
+  // Configurar event listeners
+  setupEventListeners() {
+    // Logout
+    const logoutBtn = document.getElementById('logoutBtn');
+    if (logoutBtn) {
+      logoutBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        this.logout();
+      });
+    }
+  },
 
-// Formatador de data
-function formatarData(dataString) {
-    return new Date(dataString).toLocaleDateString('pt-BR');
-}
+  // Fazer logout
+  async logout() {
+    try {
+      await fetch('/api/logout', { method: 'POST' });
+      window.location.href = '/login';
+    } catch (err) {
+      console.error('Erro ao fazer logout:', err);
+    }
+  },
 
-// Salvar dados no localStorage
-function salvarDadosNoStorage() {
-    localStorage.setItem('emprestimos', JSON.stringify(emprestimos));
-    localStorage.setItem('equipamentos', JSON.stringify(equipamentos));
-}
+  // Mostrar mensagem
+  showMessage(text, type) {
+    const messageBox = document.getElementById('messageBox');
+    if (!messageBox) return;
 
-// Atualizar estatísticas do dashboard
-function updateDashboardStats() {
-    const totalEmprestimos = document.getElementById('totalEmprestimos');
+    messageBox.textContent = text;
+    messageBox.className = `message ${type}`;
     
-    if (totalEmprestimos) {
-        const emprestimosAtivos = emprestimos.filter(e => e.status === 'ativo').length;
-        totalEmprestimos.textContent = emprestimosAtivos;
-    }
-}
+    setTimeout(() => {
+      messageBox.className = 'message';
+    }, 5000);
+  }
+};
 
-// Funções para alunos
-function solicitarRenovacao(id) {
-    showNotification('Solicitação de renovação enviada!', 'info');
-}
-
-// Funções administrativas
-function editarEmprestimo(id) {
-    showNotification('Funcionalidade de edição em desenvolvimento!', 'info');
-}
-
-function rejeitarEmprestimo(id) {
-    if (confirm('Tem certeza que deseja rejeitar este empréstimo?')) {
-        const emprestimo = emprestimos.find(e => e.id === id);
-        if (emprestimo) {
-            emprestimo.status = 'rejeitado';
-            salvarDadosNoStorage();
-            showNotification('Empréstimo rejeitado!', 'success');
-            loadEmprestimosTable();
-        }
-    }
-}
-
-// Exportar funções para uso global
-window.emprestimos = emprestimos;
-window.loadEmprestimosTable = loadEmprestimosTable;
-window.mostrarModalNovoEmprestimo = mostrarModalNovoEmprestimo;
-window.registrarDevolucao = registrarDevolucao;
-window.aprovarEmprestimo = aprovarEmprestimo;
-window.solicitarRenovacao = solicitarRenovacao;
+// Inicializar quando o DOM estiver pronto
+document.addEventListener('DOMContentLoaded', () => {
+  LoanSystem.init();
+});

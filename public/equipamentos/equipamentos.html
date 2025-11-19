@@ -6,7 +6,238 @@
   <title>Gestão de Equipamentos</title>
   <link rel="stylesheet" href="/css/style.css">
   <link rel="stylesheet" href="/css/responsive.css">
+  <link rel="stylesheet" href="/css/system.css">
   <link rel="icon" href="/imagens/logo.png">
+  <style>
+    .equipamentos-section {
+      padding: 20px;
+    }
+
+    .header-section {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 30px;
+    }
+
+    .header-section h1 {
+      margin: 0;
+      color: #333;
+    }
+
+    .search-box {
+      margin-bottom: 20px;
+    }
+
+    .search-box input {
+      width: 100%;
+      max-width: 400px;
+      padding: 10px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-size: 14px;
+    }
+
+    .equip-table {
+      width: 100%;
+      border-collapse: collapse;
+      background: white;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      border-radius: 4px;
+      overflow: hidden;
+    }
+
+    .equip-table thead {
+      background-color: #4CAF50;
+      color: white;
+    }
+
+    .equip-table th {
+      padding: 15px;
+      text-align: left;
+      font-weight: 600;
+    }
+
+    .equip-table td {
+      padding: 12px 15px;
+      border-bottom: 1px solid #eee;
+    }
+
+    .equip-table tbody tr:hover {
+      background-color: #f5f5f5;
+    }
+
+    .status-badge {
+      padding: 5px 10px;
+      border-radius: 4px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .status-disponivel {
+      background-color: #d4edda;
+      color: #155724;
+    }
+
+    .status-emprestado {
+      background-color: #fff3cd;
+      color: #856404;
+    }
+
+    .status-manutencao {
+      background-color: #f8d7da;
+      color: #721c24;
+    }
+
+    .action-buttons {
+      display: flex;
+      gap: 8px;
+    }
+
+    .btn-small {
+      padding: 6px 12px;
+      font-size: 12px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: background-color 0.3s;
+    }
+
+    .btn-edit {
+      background-color: #2196F3;
+      color: white;
+    }
+
+    .btn-edit:hover {
+      background-color: #0b7dda;
+    }
+
+    .btn-delete {
+      background-color: #f44336;
+      color: white;
+    }
+
+    .btn-delete:hover {
+      background-color: #da190b;
+    }
+
+    .btn-borrow {
+      background-color: #FF9800;
+      color: white;
+    }
+
+    .btn-borrow:hover {
+      background-color: #e68900;
+    }
+
+    .modal {
+      display: none;
+      position: fixed;
+      z-index: 1;
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 100%;
+      background-color: rgba(0,0,0,0.4);
+    }
+
+    .modal-content {
+      background-color: #fefefe;
+      margin: 10% auto;
+      padding: 20px;
+      border: 1px solid #888;
+      width: 90%;
+      max-width: 500px;
+      border-radius: 4px;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    }
+
+    .close {
+      color: #aaa;
+      float: right;
+      font-size: 28px;
+      font-weight: bold;
+      cursor: pointer;
+    }
+
+    .close:hover {
+      color: black;
+    }
+
+    .modal-content h2 {
+      margin-top: 0;
+      color: #333;
+    }
+
+    .modal-content form {
+      display: flex;
+      flex-direction: column;
+      gap: 15px;
+    }
+
+    .modal-content input,
+    .modal-content select,
+    .modal-content textarea {
+      padding: 10px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-size: 14px;
+      font-family: Arial, sans-serif;
+    }
+
+    .modal-content textarea {
+      resize: vertical;
+      min-height: 80px;
+    }
+
+    .btn-primary {
+      background-color: #4CAF50;
+      color: white;
+      padding: 10px 20px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 600;
+      transition: background-color 0.3s;
+    }
+
+    .btn-primary:hover {
+      background-color: #45a049;
+    }
+
+    .message {
+      padding: 15px;
+      margin-bottom: 20px;
+      border-radius: 4px;
+      display: none;
+    }
+
+    .message.success {
+      background-color: #d4edda;
+      color: #155724;
+      border: 1px solid #c3e6cb;
+      display: block;
+    }
+
+    .message.error {
+      background-color: #f8d7da;
+      color: #721c24;
+      border: 1px solid #f5c6cb;
+      display: block;
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 40px;
+      color: #999;
+    }
+
+    .empty-state p {
+      font-size: 16px;
+      margin: 10px 0;
+    }
+  </style>
 </head>
 
 <body>
@@ -20,57 +251,63 @@
         <li><a href="/">Início</a></li>
         <li><a href="/equipamentos" class="active">Equipamentos</a></li>
         <li><a href="/sobre">Sobre</a></li>
-        <li><a href="/logout" class="logout-btn">Sair</a></li>
+        <li><a href="#" id="logoutBtn" class="logout-btn">Sair</a></li>
       </ul>
     </nav>
   </header>
 
   <main class="container">
     <section class="equipamentos-section">
+      <div id="messageBox" class="message"></div>
+
       <div class="header-section">
         <h1>Equipamentos</h1>
-        <a href="/public/equipamentos/equipamentos.html"><button id="btnAdd" class="btn btn-primary">+ Adicionar</button></a>
+        <button id="btnAdd" class="btn btn-primary">+ Adicionar Equipamento</button>
       </div>
 
       <div class="search-box">
-        <input type="text" id="searchInput" placeholder="Buscar equipamento...">
+        <input type="text" id="searchInput" placeholder="Buscar equipamento por nome ou série...">
       </div>
 
-      <table class="equip-table">
-        <thead>
-          <tr>
-            <th>ID</th>
-            <th>Nome</th>
-            <th>Categoria</th>
-            <th>Status</th>
-            <th>Ações</th>
-          </tr>
-        </thead>
-        <tbody id="equipTableBody">
-          <!-- Populado dinamicamente -->
-        </tbody>
-      </table>
+      <div id="equipmentList"></div>
     </section>
   </main>
 
-  <!-- Modal -->
-  <div id="modal" class="modal">
+  <!-- Modal para Adicionar/Editar Equipamento -->
+  <div id="equipmentModal" class="modal">
     <div class="modal-content">
-      <span id="closeModal" class="close">&times;</span>
-      <h2>Novo Equipamento</h2>
-      <form id="formEquip">
-        <input type="text" id="nomeEquip" placeholder="Nome" required>
-        <input type="text" id="categoriaEquip" placeholder="Categoria" required>
-        <select id="statusEquip" required>
+      <span class="close" id="closeEquipmentModal">&times;</span>
+      <h2 id="modalTitle">Novo Equipamento</h2>
+      <form id="equipmentForm">
+        <input type="hidden" id="equipmentId">
+        <input type="text" id="equipmentName" placeholder="Nome do equipamento" required>
+        <input type="text" id="equipmentSerial" placeholder="Número de série (opcional)">
+        <textarea id="equipmentDescription" placeholder="Descrição (opcional)"></textarea>
+        <input type="text" id="equipmentLocation" placeholder="Localização" required>
+        <select id="equipmentStatus" required>
           <option value="Disponível">Disponível</option>
-          <option value="Em uso">Em uso</option>
+          <option value="Emprestado">Emprestado</option>
           <option value="Manutenção">Manutenção</option>
         </select>
-        <button type="submit" class="btn btn-primary">Salvar</button>
+        <button type="submit" class="btn btn-primary">Salvar Equipamento</button>
       </form>
     </div>
   </div>
 
-  <script src="/js/equipamentos.js"></script>
+  <!-- Modal para Emprestar Equipamento -->
+  <div id="borrowModal" class="modal">
+    <div class="modal-content">
+      <span class="close" id="closeBorrowModal">&times;</span>
+      <h2>Solicitar Empréstimo</h2>
+      <form id="borrowForm">
+        <input type="hidden" id="borrowEquipmentId">
+        <p id="borrowEquipmentName"></p>
+        <p>Você está solicitando o empréstimo deste equipamento. Clique em confirmar para continuar.</p>
+        <button type="submit" class="btn btn-primary">Confirmar Empréstimo</button>
+      </form>
+    </div>
+  </div>
+
+  <script src="/js/equipmentManager.js"></script>
 </body>
 </html>
