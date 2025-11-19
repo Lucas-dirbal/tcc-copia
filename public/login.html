@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - Sistema de Gestão</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/system.css">
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar">
+        <div class="nav-container">
+            <div class="nav-logo">
+                <h2>🎓 Colégio Reni Correia Gamper</h2>
+            </div>
+            <ul class="nav-menu">
+                <li><a href="index.html">Início</a></li>
+                <li><a href="login.html" class="active">Sistema</a></li>
+                <!-- Link de registrar removido nesta página de login conforme solicitado -->
+                <li><a href="sobre.html">Sobre</a></li>
+            </ul>
+        </div>
+    </nav>
+
+    <!-- Login Section -->
+    <section class="login-section">
+        <div class="login-container">
+            <div class="login-card">
+                <div class="login-header">
+                    <h1>Login do Sistema</h1>
+                    <p>Acesse sua conta para continuar</p>
+                </div>
+
+                <form id="loginForm" class="login-form">
+                    <div id="loginError" class="alert alert-error" style="display: none;"></div>
+
+                    <div class="form-group">
+                        <label for="username">Usuário:</label>
+                        <input type="text" id="username" name="username" required 
+                               placeholder="Digite seu usuário">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="password">Senha:</label>
+                        <input type="password" id="password" name="password" required 
+                               placeholder="Digite sua senha">
+                    </div>
+
+                    <button type="submit" class="btn btn-login">
+                        Entrar no Sistema
+                    </button>
+                </form>
+            </div>
+        </div>
+    </section>
+
+    <script src="js/login.js"></script>
+</body>
+</html>
